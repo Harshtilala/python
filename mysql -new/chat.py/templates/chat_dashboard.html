@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 80%;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background-color: #0056b3;
+            color: white;
+            text-align: center;
+            padding: 10px 0;
+        }
+
+        .chat-area {
+            display: flex;
+            height: 500px; /* Fixed height for the chat area */
+        }
+
+        .user-list {
+            width: 200px;
+            border-right: 1px solid #ddd;
+            padding: 10px;
+            overflow-y: auto; /* Enables scrolling if the content overflows */
+        }
+
+        .user-list ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .user-list li {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+        }
+
+        .user-list li:hover {
+            background-color: #f0f0f0;
+        }
+
+        .chat-box {
+            flex-grow: 1;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #messages {
+            flex-grow: 1;
+            overflow-y: auto; /* Enables scrolling if the content overflows */
+            padding: 10px;
+            border: 1px solid #ddd;
+            margin-bottom: 10px;
+        }
+
+        .message {
+            padding: 8px;
+            margin-bottom: 5px;
+            border-radius: 5px;
+        }
+
+        .message.sent {
+            background-color: #dcf8c6;
+            text-align: right;
+        }
+
+        .message.received {
+            background-color: #fff;
+            text-align: left;
+        }
+
+        .input-area {
+            display: flex;
+            margin-top: auto; /* Push input area to the bottom */
+        }
+
+        #messageInput {
+            flex-grow: 1;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-right: 5px;
+        }
+
+        #sendButton {
+            padding: 8px 12px;
+            border: none;
+            background-color: #007bff;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        #sendButton:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>Chat Dashboard - Welcome, {{ username }}!</h2>
+            <h3 id="selectedUser">Select a user to chat</h3> <!-- Display selected username -->
+        </div>
+        <div class="chat-area">
+            <div class="user-list">
+                <ul>
+                    {% for user in users %}
+                        <li data-user-id="{{ user.id }}">{{ user.username }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            <div class="chat-box">
+                <div id="messages">
+                    <!-- Messages will be displayed here -->
+                </div>
+                <div class="input-area">
+                    <input type="text" id="messageInput" placeholder="Type your message...">
+                    <button id="sendButton">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        $(document).ready(function() {
+            var socket = io();
+            var receiverId = null;
+            var senderId = {{ session['user_id'] }}; // Get the current user's ID from the session
+            var selectedUser = null; // Store the selected user's name
+
+            // User selection
+            $('.user-list li').click(function() {
+                $('.user-list li').removeClass('active'); // Remove active class from all users
+                $(this).addClass('active'); // Add active class to the selected user
+                receiverId = $(this).data('user-id');
+                selectedUser = $(this).text(); // Get the selected user's name
+                $('#selectedUser').text('Chatting with ' + selectedUser); // Update selected username
+                $('#messages').empty(); // Clear existing messages
+                loadMessages(receiverId); // Load messages for the selected user
+            });
+
+            // Function to load messages
+            function loadMessages(receiverId) {
+                $.ajax({
+                    url: '/get_messages/' + receiverId,
+                    type: 'GET',
+                    success: function(messages) {
+                        displayMessages(messages);
+                    }
+                });
+            }
+
+            // Function to display messages
+            function displayMessages(messages) {
+                var messagesDiv = $('#messages');
+                messages.forEach(function(message) {
+                    var messageClass = (message.from_user == senderId) ? 'sent' : 'received';
+                    var messageHTML = `<div class="message ${messageClass}">${message.message}</div>`;
+                    messagesDiv.append(messageHTML);
+                });
+                // Scroll to the bottom of the messages
+                messagesDiv.scrollTop(messagesDiv[0].scrollHeight);
+            }
+
+            // Send message
+            $('#sendButton').click(function() {
+                var message = $('#messageInput').val();
+                if (message && receiverId) {
+                    socket.emit('send_message', {
+                        'to_user': receiverId,
+                        'message': message
+                    });
+                    $('#messageInput').val('');
+                }
+            });
+
+           // Receive message
+            socket.on('receive_message', function(data) {
+                var messageClass = (data.sender_id == senderId) ? 'sent' : 'received';
+                var messageHTML = `<div class="message ${messageClass}">${data.msg}</div>`;
+                $('#messages').append(messageHTML);
+                $('#messages').scrollTop($('#messages')[0].scrollHeight);
+            });
+
+
+            // Connect event
+            socket.on('connect', function() {
+                console.log('Connected to Socket.IO');
+            });
+        });
+    </script>
+</body>
+</html>
